@@ -1,0 +1,251 @@
+import org.springframework.context.annotation.*;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.stereotype.*;
+import org.springframework.transaction.annotation.*;
+import org.hibernate.*;
+import org.hibernate.cfg.Configuration;
+import javax.persistence.*;
+
+// ======================================================
+// PART (a): SPRING DEPENDENCY INJECTION USING JAVA CONFIG
+// ======================================================
+
+class Course {
+    private String courseName;
+    public Course(String courseName) {
+        this.courseName = courseName;
+    }
+    public void showCourse() {
+        System.out.println("Course Enrolled: " + courseName);
+    }
+}
+
+class Student {
+    private Course course;
+    private String name;
+    public Student(Course course) {
+        this.course = course;
+        this.name = "John Doe";
+    }
+    public void showDetails() {
+        System.out.println("Student Name: " + name);
+        course.showCourse();
+    }
+}
+
+@Configuration
+class SpringConfig {
+    @Bean
+    public Course course() {
+        return new Course("Spring & Hibernate Development");
+    }
+    @Bean
+    public Student student() {
+        return new Student(course());
+    }
+}
+
+class PartA_SpringDI {
+    public static void main(String[] args) {
+        System.out.println("=== PART (a): Spring Dependency Injection ===");
+        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(SpringConfig.class);
+        Student student = context.getBean(Student.class);
+        student.showDetails();
+        context.close();
+    }
+}
+
+
+// ======================================================
+// PART (b): HIBERNATE CRUD OPERATIONS FOR STUDENT ENTITY
+// ======================================================
+
+@Entity
+@Table(name = "student")
+class StudentEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int id;
+    @Column
+    private String name;
+    @Column
+    private String course;
+    @Column
+    private int age;
+
+    public StudentEntity() {}
+    public StudentEntity(String name, String course, int age) {
+        this.name = name;
+        this.course = course;
+        this.age = age;
+    }
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public String getCourse() { return course; }
+    public int getAge() { return age; }
+    public void setName(String name) { this.name = name; }
+    public void setCourse(String course) { this.course = course; }
+    public void setAge(int age) { this.age = age; }
+}
+
+class PartB_HibernateCRUD {
+    public static void main(String[] args) {
+        System.out.println("\n=== PART (b): Hibernate CRUD Operations ===");
+        Configuration cfg = new Configuration()
+                .configure("hibernate.cfg.xml")
+                .addAnnotatedClass(StudentEntity.class);
+        SessionFactory factory = cfg.buildSessionFactory();
+        Session session = factory.openSession();
+
+        try {
+            // CREATE
+            Transaction tx = session.beginTransaction();
+            StudentEntity s1 = new StudentEntity("Alice", "Spring Boot", 22);
+            session.save(s1);
+            tx.commit();
+            System.out.println("Student Added Successfully: " + s1.getName());
+
+            // READ
+            session.beginTransaction();
+            StudentEntity s = session.get(StudentEntity.class, s1.getId());
+            System.out.println("Fetched Student: " + s.getName() + " | " + s.getCourse());
+            session.getTransaction().commit();
+
+            // UPDATE
+            session.beginTransaction();
+            s.setCourse("Advanced Spring Boot");
+            session.update(s);
+            session.getTransaction().commit();
+            System.out.println("Student Updated Successfully!");
+
+            // DELETE
+            session.beginTransaction();
+            session.delete(s);
+            session.getTransaction().commit();
+            System.out.println("Student Deleted Successfully!");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            session.close();
+            factory.close();
+        }
+    }
+}
+
+
+/* ---------------
+hibernate.cfg.xml
+---------------
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://localhost:3306/springdb</property>
+        <property name="hibernate.connection.username">root</property>
+        <property name="hibernate.connection.password">password</property>
+        <property name="hibernate.dialect">org.hibernate.dialect.MySQL8Dialect</property>
+        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="show_sql">true</property>
+    </session-factory>
+</hibernate-configuration>
+*/
+
+
+// ======================================================
+// PART (c): SPRING + HIBERNATE TRANSACTION MANAGEMENT
+// ======================================================
+
+@Entity
+@Table(name = "account")
+class Account {
+    @Id
+    private int accNo;
+    @Column
+    private String holderName;
+    @Column
+    private double balance;
+
+    public Account() {}
+    public Account(int accNo, String holderName, double balance) {
+        this.accNo = accNo;
+        this.holderName = holderName;
+        this.balance = balance;
+    }
+    public int getAccNo() { return accNo; }
+    public double getBalance() { return balance; }
+    public void setBalance(double balance) { this.balance = balance; }
+}
+
+@Repository
+class AccountDAO {
+    @Autowired
+    private SessionFactory factory;
+
+    public Account getAccount(int accNo) {
+        return factory.getCurrentSession().get(Account.class, accNo);
+    }
+
+    public void updateAccount(Account acc) {
+        factory.getCurrentSession().update(acc);
+    }
+}
+
+@Service
+class BankService {
+    @Autowired
+    private AccountDAO dao;
+
+    @Transactional
+    public void transferMoney(int fromAcc, int toAcc, double amount) {
+        Account sender = dao.getAccount(fromAcc);
+        Account receiver = dao.getAccount(toAcc);
+
+        if (sender.getBalance() < amount) {
+            throw new RuntimeException("Insufficient Balance!");
+        }
+
+        sender.setBalance(sender.getBalance() - amount);
+        receiver.setBalance(receiver.getBalance() + amount);
+
+        dao.updateAccount(sender);
+        dao.updateAccount(receiver);
+
+        System.out.println("Transaction Successful: " + amount + " transferred.");
+    }
+}
+
+@Configuration
+@ComponentScan(basePackages = "com.example")
+@EnableTransactionManagement
+class TxConfig {
+    @Bean
+    public SessionFactory sessionFactory() {
+        return new org.hibernate.cfg.Configuration()
+                .configure("hibernate.cfg.xml")
+                .addAnnotatedClass(Account.class)
+                .buildSessionFactory();
+    }
+
+    @Bean
+    public HibernateTransactionManager transactionManager(SessionFactory factory) {
+        return new HibernateTransactionManager(factory);
+    }
+}
+
+class PartC_TransactionManagement {
+    public static void main(String[] args) {
+        System.out.println("\n=== PART (c): Spring + Hibernate Transaction Management ===");
+        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(TxConfig.class);
+        BankService service = ctx.getBean(BankService.class);
+        try {
+            service.transferMoney(101, 102, 3000);
+        } catch (Exception e) {
+            System.out.println("Transaction Failed: " + e.getMessage());
+        }
+        ctx.close();
+    }
+}
